@@ -183,8 +183,9 @@ export class VoiceController {
 		connectionController.localPLayer = newLocalPlayer;
 
 		if (
-			connectionController.connectionState === ConnectionState.connecting ||
-			connectionController.currentGameCode !== connectionController.gamecode
+			!connectionController.joinPending &&
+			(connectionController.connectionState === ConnectionState.connecting ||
+				connectionController.currentGameCode !== connectionController.gamecode)
 		) {
 			connectionController.currentGameCode = connectionController.gamecode;
 			connectionController.joinGameRoom(
@@ -194,8 +195,9 @@ export class VoiceController {
 				newLocalPlayer.playerUid,
 				newLocalPlayer.playerIdentifier
 			);
+			// The game screen only loads once the server accepts the join (ConnectionController's
+			// setClients handler flips us to connected); a rejected join is kicked instead.
 			connectionController.updateConnectingStage(ConnectingStage.parsingGameData);
-			connectionController.connectionState = ConnectionState.conencted;
 		}
 
 		this.updateMaxDistance(state, newLocalPlayer);

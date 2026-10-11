@@ -224,6 +224,14 @@ export class GameHelperService {
 			this.updateViews();
 		});
 
+		this.cManager.events.on('kicked', () => {
+			this.disconnect();
+			this.cManager.error =
+				'The voice server closed your connection. Make sure the username matches your own Among Us name.';
+			this.cManager.connectionState = ConnectionState.error;
+			this.updateViews();
+		});
+
 		// Stored settings (including the previously selected microphone) must be in place before
 		// devices are enumerated and a default is picked - otherwise the fresh device list's
 		// positional id would be matched against (and overwrite) the persisted selection, or the

@@ -83,6 +83,8 @@ export class ConnectionController implements IConnectionController {
 	deviceID: string;
 	public lobbySettings: ILobbySettings = { ...defaultLobbySettings };
 	natFix = false;
+	/** True between sending the lobby `join` and the server accepting it (its `setClients` reply). */
+	joinPending = false;
 	public audioController: AudioController;
 	/** Written by MobileHostService; read here to filter game-state frames to the selected host. */
 	public currentHost: string | undefined;
@@ -153,6 +155,7 @@ export class ConnectionController implements IConnectionController {
 		this.currentGameState = undefined;
 		this.oldGameState = undefined;
 		this.error = undefined;
+		this.joinPending = false;
 		this.events.emit('connecting');
 		this.initialize(voiceserver);
 	}
@@ -270,8 +273,9 @@ export class ConnectionController implements IConnectionController {
 		playerUid = '',
 		playerIdentifier = ''
 	): void {
+		this.joinPending = true;
 		this.startAudio().then(() => {
-			this.socketIOClient.emit('join', this.gamecode, playerId, clientId);
+			this.socketIOClient.emit('join', this.gamecode, playerId, clientId, this.amongusUsername);
 			this.emitId(playerId, clientId, friendCode, playerUid, playerIdentifier);
 		});
 	}
@@ -396,14 +400,43 @@ export class ConnectionController implements IConnectionController {
 				this.updateConnectingStage(ConnectingStage.connectingToVoiceServer);
 				this.connectionState = ConnectionState.connecting; // resetting it to connecting since connection to voice server got reset;
 				this.audioController.startAudio().then(() => {
-					this.socketIOClient.emit('join', this.gamecode + '_mobile', Number(Date.now()), Number(Date.now()));
+					// The username lets the server work out which player we are before it relays any
+					// game state to us (older servers ignore the extra argument).
+					this.socketIOClient.emit(
+						'join',
+						this.gamecode + '_mobile',
+						Number(Date.now()),
+						Number(Date.now()),
+						this.amongusUsername
+					);
 					this.sendGameInfo(this.buildGameInfo());
 				});
 			}
 		});
-		this.socketIOClient.on('disconnect', () => {
-			console.log('[client.disconnect]');
+		const socket = this.socketIOClient;
+		socket.on('disconnect', (reason: string) => {
+			console.log('[client.disconnect]', reason);
+			if (this.socketIOClient !== socket) return;
+			this.joinPending = false;
 			this.destroyAllPeers();
+			// Drop everything the host told us: a dropped socket must not leave the game screen
+			// (player grid, roles, impostor radio) rendered from stale state.
+			this.currentGameState = undefined;
+			this.oldGameState = undefined;
+			this.localPLayer = undefined;
+			this.currentHost = undefined;
+			this.currentGameCode = undefined;
+			this.lobbySettings = { ...defaultLobbySettings };
+			if (this.connectionState !== ConnectionState.disconnected) {
+				if (reason === 'io server disconnect') {
+					// The server closed the socket on purpose (e.g. it rejected our player claim as
+					// a duplicate/spoof). socket.io does not auto-reconnect here, and neither do we.
+					this.events.emit('kicked');
+				} else {
+					this.connectingStage = 0;
+					this.connectionState = ConnectionState.connecting;
+				}
+			}
 			this.setClients({});
 		});
 
@@ -436,6 +469,11 @@ export class ConnectionController implements IConnectionController {
 
 		this.socketIOClient.on('setClients', (clients: SocketClientMap) => {
 			console.log('[client.setClients]', { clients });
+			if (this.joinPending) {
+				// The server answers an accepted join with the lobby's client list.
+				this.joinPending = false;
+				this.connectionState = ConnectionState.conencted;
+			}
 			this.setClients(clients);
 		});
 
