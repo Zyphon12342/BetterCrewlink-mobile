@@ -69,6 +69,10 @@ export class VoiceController {
 	private impostorRadioClientId = -1;
 	private impostorRadioPressed = false;
 	private radioTransmitting = false;
+	/** How long after a kill the impostor(s) can still hear their victim, if enabled for the lobby. */
+	private static readonly KILL_GRACE_PERIOD_MS = 2000;
+	private killGraceWasAliveByClient: Record<number, boolean> = {};
+	private killGraceEndsAtByClient: Record<number, number> = {};
 
 	constructor(
 		private connectionController: ConnectionController,
@@ -112,6 +116,7 @@ export class VoiceController {
 		this.impostorRadioClientId = -1;
 		this.impostorRadioPressed = false;
 		this.radioTransmitting = false;
+		this.resetKillGrace();
 		this.connectionController.audioController.setRadioTransmitting(false);
 	}
 
@@ -202,6 +207,11 @@ export class VoiceController {
 
 		this.updateMaxDistance(state, newLocalPlayer);
 		this.updatePlayerDeadStates(state, newLocalPlayer);
+		if (state.gameState === GameState.LOBBY || state.gameState === GameState.MENU) {
+			this.resetKillGrace();
+		} else {
+			this.trackKillGrace(state.players, state.gameState);
+		}
 		this.updatePeerAudio(state, newLocalPlayer);
 		this.updateImpostorRadioTransmission();
 		this.cleanupImpostorRadio(state, newLocalPlayer);
@@ -218,6 +228,47 @@ export class VoiceController {
 			const playerState = this.getOrCreatePlayerState(player.clientId);
 			playerState.isDead = this.computeLatchedDead(playerState.isDead, player.isDead, myPlayer);
 		}
+	}
+
+	/**
+	 * Detects the alive -> dead transition for each player (i.e. the moment a kill lands) and keeps a
+	 * short "grace window" open per victim, so impostors can keep hearing a just-killed crewmate for a
+	 * little while instead of being cut off the instant `isDead` flips. Only observes deaths while the
+	 * round is actually in progress (`GameState.TASKS`); any other game state leaves existing grace
+	 * windows untouched, since `resetKillGrace()` is called explicitly on lobby/menu/disconnect.
+	 */
+	private trackKillGrace(players: Player[] | undefined, gameState: GameState, now: number = Date.now()): void {
+		if (!players || gameState !== GameState.TASKS) return;
+
+		for (const player of players) {
+			const clientId = player.clientId;
+			const isAlive = !player.isDead && !player.disconnected;
+			// Default an unseen player to their current state so joining mid-round never looks like a kill.
+			const wasAlive = this.killGraceWasAliveByClient[clientId] ?? isAlive;
+			if (wasAlive && !isAlive) {
+				this.killGraceEndsAtByClient[clientId] = now + VoiceController.KILL_GRACE_PERIOD_MS;
+			}
+			this.killGraceWasAliveByClient[clientId] = isAlive;
+		}
+
+		for (const key of Object.keys(this.killGraceEndsAtByClient)) {
+			const clientId = Number(key);
+			if (this.killGraceEndsAtByClient[clientId] <= now) {
+				delete this.killGraceEndsAtByClient[clientId];
+			}
+		}
+	}
+
+	/** True while `clientId`'s grace window (opened by a kill `trackKillGrace()` just observed) is still open. */
+	private isKillGraceActive(clientId: number, now: number = Date.now()): boolean {
+		const endsAt = this.killGraceEndsAtByClient[clientId];
+		return endsAt !== undefined && endsAt > now;
+	}
+
+	/** Clears all tracked kill-grace state, e.g. on returning to the lobby/menu or leaving a game. */
+	private resetKillGrace(): void {
+		this.killGraceWasAliveByClient = {};
+		this.killGraceEndsAtByClient = {};
 	}
 
 	private updateMaxDistance(state: AmongUsState, myPlayer: Player): void {
@@ -273,7 +324,8 @@ export class VoiceController {
 				lobbySettings,
 				myPlayer,
 				player,
-				this.impostorRadioClientId
+				this.impostorRadioClientId,
+				this.isKillGraceActive(player.clientId)
 			);
 			if (endGain === null) {
 				endGain = 0;

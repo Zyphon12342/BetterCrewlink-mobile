@@ -335,7 +335,8 @@ export default class AudioController {
 		activeLobbySettings: ILobbySettings,
 		me: Player,
 		other: Player,
-		impostorRadioClientId: number
+		impostorRadioClientId: number,
+		inKillGrace: boolean
 	): number | null {
 		const peer = this.peers.get(peerId);
 		const destination = this.masterGain;
@@ -356,6 +357,7 @@ export default class AudioController {
 			other,
 			maxDistance: this.maxDistance,
 			impostorRadioClientId,
+			inKillGrace,
 		});
 
 		if (result.panMaxDistance !== null) {

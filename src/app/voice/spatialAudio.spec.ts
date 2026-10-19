@@ -102,6 +102,7 @@ function run(overrides: Partial<VoiceAudioInput> = {}) {
 		other: makePlayer({ id: 2, clientId: 2, x: 1, y: 0 }),
 		maxDistance: 5.32,
 		impostorRadioClientId: -1,
+		inKillGrace: false,
 		...overrides,
 	});
 }
@@ -168,6 +169,33 @@ describe('calculateVoiceAudio', () => {
 		});
 		expect(result.gain).toBeCloseTo(0.25);
 		expect(result.reverb).toBe(true);
+	});
+
+	it('lets a living impostor hear a just-killed player at full gain during the kill grace window', () => {
+		const result = run({
+			other: makePlayer({ id: 2, clientId: 2, x: 1, y: 0, isDead: true }),
+			me: makePlayer({ id: 1, clientId: 1, isLocal: true, isImpostor: true, isDead: false }),
+			activeLobbySettings: makeLobbySettings({ killVoiceGraceEnabled: true }),
+			inKillGrace: true,
+		});
+		expect(result.gain).toBe(1);
+	});
+
+	it('cuts a just-killed player off immediately for crewmates, or when the setting is off, or once the grace window ends', () => {
+		const victim = makePlayer({ id: 2, clientId: 2, x: 1, y: 0, isDead: true });
+		const impostor = makePlayer({ id: 1, clientId: 1, isLocal: true, isImpostor: true });
+		const enabled = makeLobbySettings({ killVoiceGraceEnabled: true });
+
+		expect(run({ other: victim, activeLobbySettings: enabled, inKillGrace: true }).gain).toBe(0);
+		expect(
+			run({
+				other: victim,
+				me: impostor,
+				activeLobbySettings: makeLobbySettings({ killVoiceGraceEnabled: false }),
+				inKillGrace: true,
+			}).gain
+		).toBe(0);
+		expect(run({ other: victim, me: impostor, activeLobbySettings: enabled, inKillGrace: false }).gain).toBe(0);
 	});
 
 	it('mutes a dead player heard by a living player when haunting is off', () => {

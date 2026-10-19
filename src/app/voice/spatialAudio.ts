@@ -17,6 +17,8 @@ export interface VoiceAudioInput {
 	other: Player;
 	maxDistance: number;
 	impostorRadioClientId: number;
+	/** True for a couple of seconds after `other` was killed (see VoiceController's kill-grace tracking). */
+	inKillGrace: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ function distance(panPos: [number, number]): number {
 }
 
 export function calculateVoiceAudio(input: VoiceAudioInput): VoiceAudioResult {
-	const { state, settings, activeLobbySettings, me, other, maxDistance, impostorRadioClientId } = input;
+	const { state, settings, activeLobbySettings, me, other, maxDistance, impostorRadioClientId, inKillGrace } = input;
 
 	const result: VoiceAudioResult = {
 		gain: 0,
@@ -94,7 +96,11 @@ export function calculateVoiceAudio(input: VoiceAudioInput): VoiceAudioResult {
 				endGain = 0;
 			}
 
-			if (!me.isDead && other.isDead && me.isImpostor && activeLobbySettings.haunting) {
+			if (me.isImpostor && !me.isDead && other.isDead && inKillGrace && activeLobbySettings.killVoiceGraceEnabled) {
+				// Let the killer keep hearing their victim for a couple seconds after the kill.
+				// Crewmates are unaffected: they still fall into the `other.isDead` branch below immediately.
+				endGain = 1;
+			} else if (!me.isDead && other.isDead && me.isImpostor && activeLobbySettings.haunting) {
 				result.reverb = true;
 				wallCheckEnabled = false;
 				endGain = settings.ghostVolumeAsImpostor / 100;
