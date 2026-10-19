@@ -8,6 +8,7 @@ export interface ILobbySettings {
 	maxDistance: number;
 	visionHearing: boolean;
 	haunting: boolean;
+	killVoiceGraceEnabled: boolean;
 	hearImpostorsInVents: boolean;
 	impostersHearImpostersInvent: boolean;
 	impostorRadioEnabled: boolean;

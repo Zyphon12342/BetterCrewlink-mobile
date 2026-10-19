@@ -63,6 +63,7 @@ export class LobbySettingsComponent implements OnInit, OnDestroy {
 			{ label: 'Walls block audio', value: settings.wallsBlockAudio },
 			{ label: 'Hear through cameras', value: settings.hearThroughCameras },
 			{ label: 'Haunting', value: settings.haunting },
+			{ label: 'Impostors hear victim briefly after a kill', value: settings.killVoiceGraceEnabled },
 			{ label: 'Hear impostors in vents', value: settings.hearImpostorsInVents },
 			{ label: 'Impostors hear each other in vents', value: settings.impostersHearImpostersInvent },
 			{ label: 'Comms sabotage', value: settings.commsSabotage },

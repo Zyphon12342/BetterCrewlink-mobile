@@ -16,6 +16,7 @@ export interface PeerAudioNodes {
 export const defaultLobbySettings: ILobbySettings = {
 	maxDistance: 5.32,
 	haunting: false,
+	killVoiceGraceEnabled: false,
 	hearImpostorsInVents: false,
 	impostersHearImpostersInvent: false,
 	impostorRadioEnabled: false,
